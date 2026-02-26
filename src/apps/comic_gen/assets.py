@@ -4,7 +4,7 @@ import time
 from typing import Dict, Any, List
 from urllib.parse import quote
 from .models import Character, Scene, Prop, GenerationStatus, ImageAsset, ImageVariant, MAX_VARIANTS_PER_ASSET
-from ...models.image import WanxImageModel
+from ...models.image import OpenRouterImageModel as WanxImageModel
 from ...utils import get_logger
 from ...utils.oss_utils import is_object_key
 
