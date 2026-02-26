@@ -5,6 +5,8 @@ import uuid
 import logging
 import traceback
 import re
+import openai
+from openai import OpenAI
 from typing import List, Dict, Any
 
 from .models import Script, Character, Scene, Prop, StoryboardFrame, GenerationStatus
@@ -36,39 +38,44 @@ class ScriptProcessor:
         prompt = self._construct_prompt(text)
         
         try:
-            import dashscope
-            dashscope.api_key = self.api_key
             
-            response = dashscope.Generation.call(
-                # model='deepseek-v3.2',
-                model='qwen-max',
-                prompt=prompt,
-                result_format='message',
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key="sk-or-v1-555555555",
+                )
+            messages = [{"role": "user", "content": prompt}]
+            response = client.chat.completions.create(
+                model='minimax/minimax-m2.5',  # 例如 "deepseek-chat" 或 "gpt-3.5-turbo"
+                messages=messages,
+                temperature=0.7,        # 可配置
             )
-            
-            if response.status_code == 200:
-                content = response.output.choices[0].message.content
-                logger.debug(f"LLM Response Content:\n{content}")
-                
-                # Clean up markdown code blocks if present
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0]
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0]
-                    
-                data = json.loads(content.strip())
-                return self._create_script_from_data(title, text, data)
-            else:
-                error_msg = f"LLM 调用失败: {response.code} - {response.message}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-                
+            content = response.choices[0].message.content
+            logger.debug(f"LLM Response Content:\n{content}")
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+    
+            data = json.loads(content.strip())
+            return self._create_script_from_data(title, text, data)        
         except json.JSONDecodeError as e:
             error_msg = f"LLM 返回的数据格式错误，无法解析 JSON: {e}"
             logger.error(error_msg, exc_info=True)
             raise RuntimeError(error_msg)
+        except openai.APIConnectionError as e:
+            error_msg = f"无法连接到 API 服务: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg)
+        except openai.RateLimitError as e:
+            error_msg = f"API 调用达到速率限制: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg)
+        except openai.APIStatusError as e:
+            error_msg = f"API 返回错误状态 {e.status_code}: {e.response}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg)
         except ValueError:
-            # Re-raise ValueError (e.g., API key not set)
+            # API key 未设置等错误
             raise
         except Exception as e:
             error_msg = f"剧本解析失败: {str(e)}"
